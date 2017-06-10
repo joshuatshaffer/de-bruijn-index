@@ -3,7 +3,6 @@ module Main where
 
 -- De Bruijn index
 data LambExp a = Var a | Abs (LambExp a) | App (LambExp a) (LambExp a)
-  deriving (Show)
 
 raise :: (Enum a, Ord a) => LambExp a -> a -> LambExp a
 raise (Var x) d = if x > d then Var (pred x) else Var x
@@ -22,7 +21,7 @@ bind e (Abs x) d = Abs (bind (lower e (toEnum 0)) x (succ d))
 
 reduce :: (Enum a, Ord a) => LambExp a -> LambExp a
 reduce (Var x) = Var x
-reduce (App (Abs x) y) = bind y (raise x (toEnum 0)) (toEnum 1)
+reduce (App (Abs x) y) = raise (bind (lower y (toEnum 0)) x (toEnum 1)) (toEnum 1)
 reduce (App x y) = App (reduce x) (reduce y)
 reduce (Abs x) = Abs (reduce x)
 
@@ -35,21 +34,31 @@ reduceable (Abs x) = reduceable x
 fullReduce :: (Enum a, Ord a) => LambExp a -> LambExp a
 fullReduce = until (not . reduceable) reduce
 
-prittyPrint :: Show a => LambExp a -> String
-prittyPrint (App x@(Abs _) y@(Abs _)) = "(" ++ prittyPrint x ++ ") (" ++ prittyPrint y ++ ")"
-prittyPrint (App x@(Abs _) y) = "(" ++ prittyPrint x ++ ") " ++ prittyPrint y
-prittyPrint (App x y@(Abs _)) = prittyPrint x ++ " (" ++ prittyPrint y ++ ")"
+instance (Show a) => Show (LambExp a) where
+  show (App x@(Abs _) y@(Abs _)) = "(" ++ show x ++ ") (" ++ show y ++ ")"
+  show (App x@(Abs _) y) = "(" ++ show x ++ ") " ++ show y
+  show (App x y@(Abs _)) = show x ++ " (" ++ show y ++ ")"
 
-prittyPrint (App x@(App _ _) y) = prittyPrint x ++ " " ++ prittyPrint y
-prittyPrint (App x y@(App _ _)) = prittyPrint x ++ " (" ++ prittyPrint y ++ ")"
+  show (App x@(App _ _) y) = show x ++ " " ++ show y
+  show (App x y@(App _ _)) = show x ++ " (" ++ show y ++ ")"
 
-prittyPrint (App x y) = prittyPrint x ++ " " ++ prittyPrint y
-prittyPrint (Abs x) = "λ " ++ prittyPrint x
-prittyPrint (Var x) = show x
+  show (App x y) = show x ++ " " ++ show y
+  show (Abs x) = "λ " ++ show x
+  show (Var x) = show x
 
-lsucc = Abs $ Abs $ Abs $ Var 2 `App` ((Var 3 `App` Var 2) `App` Var 1) -- λn.λf.λx.f (n f x)  λ λ λ 2 (3 2 1)
+instance Functor LambExp where
+  fmap f (Var x) = Var (f x)
+  fmap f (Abs x) = Abs (fmap f x)
+  fmap f (App x y) = App (fmap f x) (fmap f y)
+
+lzero,lsucc,lplus,lmult :: LambExp Int
 lzero = Abs $ Abs $ Var 1 -- λ λ 1
+lsucc = Abs $ Abs $ Abs $ Var 2 `App` ((Var 3 `App` Var 2) `App` Var 1) -- λn.λf.λx.f (n f x)  λ λ λ 2 (3 2 1)
+lplus = Abs $ Abs $ Abs $ Abs $ (Var 4 `App` Var 2) `App` ((Var 3 `App` Var 2) `App` Var 1)--λm.λn.λf.λx.m f (n f x)
+lmult = Abs $ Abs $ Abs $ Var 3 `App` (Var 2 `App` Var 1)
 
+lnat :: Int -> LambExp Int
+lnat = (!!) $ iterate (fullReduce . App lsucc) lzero
 {-
 instance (Read a) => Read (LambExp a) where
   readPrec :: ReadPrec (LambExp a)
@@ -64,8 +73,5 @@ instance (Read a) => Read (LambExp a) where
 
 main :: IO ()
 main = do
-  --putStrLn "(λ λ 4 2 (λ 1 3)) (λ 5 1)"
-  mapM_ (putStrLn . prittyPrint) . take 5 . iterate reduce . (!! 1) $ iterate (App lsucc) lzero
-  where
-    a :: LambExp Integer
-    a = Abs (Abs ((Var 4 `App` Var 2) `App` Abs (Var 1 `App` Var 3))) `App` Abs (Var 5 `App` Var 1)
+  mapM_ print . take 5 $ iterate (fullReduce . App lsucc) lzero
+  print $ fullReduce $ (lmult `App` lnat 3) `App` lnat 2
